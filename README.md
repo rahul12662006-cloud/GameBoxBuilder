@@ -1,6 +1,6 @@
 # GameBox Builder 🎮
 
-Phase 1 foundation build for a template-based no-code Android game builder.
+Phase 2 build for a template-based no-code Android game builder.
 
 ## What is included
 
@@ -11,7 +11,10 @@ Phase 1 foundation build for a template-based no-code Android game builder.
 - Fixed safe options only: character, map, obstacle pack, controls, camera, speed, difficulty, coins, powerups, UI theme
 - Internal save/load system
 - `.gamebox` export using JSON config
-- Phase 1 preview mode
+- Phase 2 playable 2D Endless Runner playtest
+- Real jump, slide, moving obstacles, coin collection, score, pause, restart and game-over loop
+- Speed/difficulty settings now affect the 2D runner gameplay
+- Other templates still use safe preview mode
 - GitHub Actions workflow to build a debug APK without Android Studio
 
 ## Current templates
@@ -25,10 +28,10 @@ Phase 1 foundation build for a template-based no-code Android game builder.
 
 ## Recommended next phases
 
-### Phase 2
-Make the 2D Endless Runner fully playable.
-
 ### Phase 3
+Add obstacle pack tuning, basic level/map editor and UI editor.
+
+### Phase 4
 Add the grid/map editor and UI editor.
 
 ### Phase 4
@@ -52,4 +55,4 @@ Add separate APK export through GitHub Actions/cloud build.
 
 ## Important note
 
-This is Phase 1 foundation. It is not the final game engine. The project is intentionally template-based so users cannot create code errors.
+This is Phase 2. The 2D Endless Runner template is now playable, while the project is still intentionally template-based so users cannot create code errors.

@@ -4,7 +4,8 @@
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
-android:roundIcon="@drawable/ic_launcher"
+        android:label="GameBox Builder"
+        android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.GameBoxBuilder">
 

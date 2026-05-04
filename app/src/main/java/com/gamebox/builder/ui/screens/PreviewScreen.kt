@@ -48,6 +48,11 @@ fun PreviewScreen(
     project: GameProject,
     onBack: () -> Unit
 ) {
+    if (project.templateId == "2d_endless_runner") {
+        RunnerGameScreen(project = project, onBack = onBack)
+        return
+    }
+
     var lane by remember { mutableIntStateOf(1) }
     var actionTick by remember { mutableIntStateOf(0) }
 
@@ -59,7 +64,7 @@ fun PreviewScreen(
     ) {
         GameBoxHeader(
             title = "Preview Mode ▶️",
-            subtitle = "Phase 1 preview reads the saved .gamebox config and simulates the selected template."
+            subtitle = "Phase 2 playtest uses real runner gameplay for 2D Endless Runner. Other templates still use safe preview."
         )
         OutlinedButton(onClick = onBack) { Text("Back to editor") }
 

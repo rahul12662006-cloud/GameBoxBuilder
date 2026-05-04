@@ -2,6 +2,7 @@ package com.gamebox.builder.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,7 +40,6 @@ import com.gamebox.builder.data.GameTemplate
 import com.gamebox.builder.ui.GameBoxHeader
 import com.gamebox.builder.ui.SelectablePill
 import kotlin.math.roundToInt
-import androidx.compose.foundation.layout.ColumnScope
 
 @Composable
 fun EditorScreen(
@@ -199,7 +199,7 @@ fun EditorScreen(
 }
 
 @Composable
- private fun EditorCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun EditorCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
