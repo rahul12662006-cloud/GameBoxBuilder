@@ -39,6 +39,7 @@ import com.gamebox.builder.data.GameTemplate
 import com.gamebox.builder.ui.GameBoxHeader
 import com.gamebox.builder.ui.SelectablePill
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.ColumnScope
 
 @Composable
 fun EditorScreen(
@@ -198,7 +199,7 @@ fun EditorScreen(
 }
 
 @Composable
-private fun EditorCard(title: String, content: @Composable Column.() -> Unit) {
+ private fun EditorCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
