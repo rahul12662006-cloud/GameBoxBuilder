@@ -35,3 +35,10 @@ The APK is uploaded as a workflow artifact.
 ## Phase 4
 
 Added a real playable 2D Platformer template with left/right movement, jump physics, platforms, pits, spikes, enemies, checkpoint, coins, lives, finish flag, level complete screen and best score saving. The Preview button now opens the real platformer playtest for the 2D Platformer template.
+
+
+## Phase 4.1 Platformer Control Hotfix
+- Fixed platform landing so the player no longer falls through platform tops.
+- Replaced tap-nudge movement with hold-to-move left/right controls.
+- Added forgiving platform edge detection, safer pit detection, and lives clamped to 0.
+- Improved ground drawing so pits show actual gaps.
