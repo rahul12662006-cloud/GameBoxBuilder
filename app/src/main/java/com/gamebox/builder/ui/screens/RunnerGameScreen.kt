@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gamebox.builder.data.GameProject
@@ -49,6 +50,7 @@ import kotlin.math.max
 import kotlin.random.Random
 
 private enum class RunnerObstacleType { BOX, TALL_GATE, SPIKES }
+private enum class RunnerPowerupType { SHIELD, MAGNET, DOUBLE_COIN }
 
 private data class RunnerObstacle(
     val id: Int,
@@ -64,49 +66,73 @@ private data class RunnerCoin(
     val collected: Boolean = false
 )
 
+private data class RunnerPowerup(
+    val id: Int,
+    val type: RunnerPowerupType,
+    val x: Float,
+    val y: Float,
+    val collected: Boolean = false
+)
+
 @Composable
 fun RunnerGameScreen(
     project: GameProject,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scorePrefs = remember(project.projectId) { context.getSharedPreferences("gamebox_runner_scores", 0) }
+    val bestScoreKey = "best_score_${project.projectId}"
+
     var runSeed by remember(project.projectId, project.updatedAt) { mutableIntStateOf(1) }
     var isRunning by remember(runSeed) { mutableStateOf(true) }
     var isGameOver by remember(runSeed) { mutableStateOf(false) }
     var playerLift by remember(runSeed) { mutableFloatStateOf(0f) }
     var jumpVelocity by remember(runSeed) { mutableFloatStateOf(0f) }
     var slideTimer by remember(runSeed) { mutableFloatStateOf(0f) }
+    var shieldTimer by remember(runSeed) { mutableFloatStateOf(0f) }
+    var magnetTimer by remember(runSeed) { mutableFloatStateOf(0f) }
+    var doubleCoinTimer by remember(runSeed) { mutableFloatStateOf(0f) }
     var score by remember(runSeed) { mutableIntStateOf(0) }
+    var bestScore by remember(project.projectId) { mutableIntStateOf(scorePrefs.getInt(bestScoreKey, 0)) }
     var coins by remember(runSeed) { mutableIntStateOf(0) }
     var distance by remember(runSeed) { mutableFloatStateOf(0f) }
     var nextId by remember(runSeed) { mutableIntStateOf(10) }
     var lastFrameNanos by remember(runSeed) { mutableLongStateOf(0L) }
 
-    val obstacles = remember(runSeed) {
-        // Wider starting gaps make the first playtest feel fair on phone screens.
+    val canSlide = project.controlMode != "Tap Jump"
+
+    val obstacles = remember(runSeed, project.selectedObstaclePack) {
         mutableStateListOf(
-            RunnerObstacle(1, RunnerObstacleType.BOX, 1.42f),
-            RunnerObstacle(2, RunnerObstacleType.SPIKES, 2.18f),
-            RunnerObstacle(3, RunnerObstacleType.TALL_GATE, 2.98f)
+            RunnerObstacle(1, obstacleForPack(project.selectedObstaclePack, 1), 1.55f),
+            RunnerObstacle(2, obstacleForPack(project.selectedObstaclePack, 2), 2.44f),
+            RunnerObstacle(3, obstacleForPack(project.selectedObstaclePack, 3), 3.35f)
         )
     }
-    val coinList = remember(runSeed) {
-        mutableStateListOf(
-            RunnerCoin(4, 1.65f, 0.58f),
-            RunnerCoin(5, 2.42f, 0.48f),
-            RunnerCoin(6, 3.18f, 0.58f)
-        )
+    val coinList = remember(runSeed, project.coinsEnabled) {
+        mutableStateListOf<RunnerCoin>().apply {
+            if (project.coinsEnabled) {
+                add(RunnerCoin(4, 1.82f, 0.58f))
+                add(RunnerCoin(5, 2.70f, 0.48f))
+                add(RunnerCoin(6, 3.62f, 0.58f))
+            }
+        }
+    }
+    val powerups = remember(runSeed, project.powerupsEnabled) {
+        mutableStateListOf<RunnerPowerup>().apply {
+            if (project.powerupsEnabled) add(RunnerPowerup(7, RunnerPowerupType.SHIELD, 2.05f, 0.50f))
+        }
     }
 
     fun jump() {
         if (!isGameOver && playerLift <= 0.01f) {
-            jumpVelocity = 1.38f + project.gameSpeed * 0.03f
+            jumpVelocity = 1.40f + project.gameSpeed * 0.03f
             isRunning = true
         }
     }
 
     fun slide() {
-        if (!isGameOver) {
-            slideTimer = 0.52f
+        if (!isGameOver && canSlide) {
+            slideTimer = 0.58f
             isRunning = true
         }
     }
@@ -115,7 +141,14 @@ fun RunnerGameScreen(
         runSeed += 1
     }
 
-    LaunchedEffect(runSeed, project.gameSpeed, project.difficulty) {
+    LaunchedEffect(score) {
+        if (score > bestScore) {
+            bestScore = score
+            scorePrefs.edit().putInt(bestScoreKey, score).apply()
+        }
+    }
+
+    LaunchedEffect(runSeed, project.gameSpeed, project.difficulty, project.selectedObstaclePack, project.coinsEnabled, project.powerupsEnabled) {
         while (true) {
             val frameTime = withFrameNanos { it }
             if (lastFrameNanos == 0L) {
@@ -128,15 +161,18 @@ fun RunnerGameScreen(
 
             if (!isRunning || isGameOver) continue
 
-            val worldSpeed = 0.40f + project.gameSpeed * 0.055f + project.difficulty * 0.025f
+            val worldSpeed = 0.34f + project.gameSpeed * 0.050f + project.difficulty * 0.020f
             distance += worldSpeed * dt
-            score = max(score, (distance * 100).toInt() + coins * 50)
+            score = max(score, (distance * 100).toInt() + coins * 75)
 
             if (slideTimer > 0f) slideTimer = (slideTimer - dt).coerceAtLeast(0f)
+            if (shieldTimer > 0f) shieldTimer = (shieldTimer - dt).coerceAtLeast(0f)
+            if (magnetTimer > 0f) magnetTimer = (magnetTimer - dt).coerceAtLeast(0f)
+            if (doubleCoinTimer > 0f) doubleCoinTimer = (doubleCoinTimer - dt).coerceAtLeast(0f)
 
             if (jumpVelocity > 0f || playerLift > 0f) {
                 playerLift += jumpVelocity * dt
-                jumpVelocity -= 3.05f * dt
+                jumpVelocity -= 3.00f * dt
                 if (playerLift <= 0f) {
                     playerLift = 0f
                     jumpVelocity = 0f
@@ -153,54 +189,83 @@ fun RunnerGameScreen(
 
             val newCoins = coinList.map { coin ->
                 var moved = coin.copy(x = coin.x - worldSpeed * dt)
-                if (!moved.collected && abs(moved.x - playerX) < 0.055f && abs((0.78f - playerLift) - moved.y) < 0.16f) {
+                val collectRangeX = if (magnetTimer > 0f) 0.20f else 0.060f
+                val collectRangeY = if (magnetTimer > 0f) 0.35f else 0.16f
+                if (!moved.collected && abs(moved.x - playerX) < collectRangeX && abs((0.78f - playerLift) - moved.y) < collectRangeY) {
                     moved = moved.copy(collected = true)
-                    coins += 1
-                    score += 100
+                    coins += if (doubleCoinTimer > 0f) 2 else 1
+                    score += if (doubleCoinTimer > 0f) 200 else 100
                 }
                 moved
             }.filter { it.x > -0.15f && !it.collected }
             coinList.clear()
             coinList.addAll(newCoins)
 
-            val farthestObstacle = obstacles.maxOfOrNull { it.x } ?: 0f
-            if (farthestObstacle < 1.55f) {
-                val random = Random(nextId + score + project.difficulty * 13)
-                val type = when (random.nextInt(3)) {
-                    0 -> RunnerObstacleType.BOX
-                    1 -> RunnerObstacleType.SPIKES
-                    else -> RunnerObstacleType.TALL_GATE
+            val newPowerups = powerups.map { powerup ->
+                var moved = powerup.copy(x = powerup.x - worldSpeed * dt)
+                if (!moved.collected && abs(moved.x - playerX) < 0.070f && abs((0.78f - playerLift) - moved.y) < 0.20f) {
+                    moved = moved.copy(collected = true)
+                    when (moved.type) {
+                        RunnerPowerupType.SHIELD -> shieldTimer = 5.0f
+                        RunnerPowerupType.MAGNET -> magnetTimer = 5.0f
+                        RunnerPowerupType.DOUBLE_COIN -> doubleCoinTimer = 5.0f
+                    }
+                    score += 150
                 }
-                // Spawn further away and keep a real gap between obstacles.
-                // This avoids unfair back-to-back hits on small mobile screens.
-                val spawnX = max(1.90f, farthestObstacle + 0.72f + random.nextFloat() * 0.34f)
+                moved
+            }.filter { it.x > -0.15f && !it.collected }
+            powerups.clear()
+            powerups.addAll(newPowerups)
+
+            val farthestObstacle = obstacles.maxOfOrNull { it.x } ?: 0f
+            val difficultyGapPenalty = project.difficulty * 0.040f
+            val minimumGap = (0.86f - difficultyGapPenalty).coerceAtLeast(0.62f)
+            if (farthestObstacle < 1.68f) {
+                val random = Random(nextId + score + project.difficulty * 13 + project.gameSpeed * 17)
+                val type = obstacleForPack(project.selectedObstaclePack, random.nextInt(100))
+                val spawnX = max(2.02f, farthestObstacle + minimumGap + random.nextFloat() * 0.30f)
                 obstacles.add(RunnerObstacle(nextId, type, spawnX))
                 nextId += 1
-                if (project.coinsEnabled) {
+
+                if (project.coinsEnabled && random.nextInt(100) > 12) {
                     coinList.add(
                         RunnerCoin(
                             nextId,
-                            spawnX + 0.20f + random.nextFloat() * 0.18f,
+                            spawnX + 0.28f + random.nextFloat() * 0.20f,
                             if (type == RunnerObstacleType.TALL_GATE) 0.52f else 0.58f
                         )
                     )
                     nextId += 1
                 }
-            }
 
-            val hit = obstacles.any { obstacle ->
-                // Forgiving hitboxes: collisions now use a smaller center overlap than the
-                // drawn sprites, so the player does not die while visually far away.
-                val xGap = abs(obstacle.x - playerX)
-                when (obstacle.type) {
-                    RunnerObstacleType.BOX -> xGap < 0.046f && playerLift < 0.13f
-                    RunnerObstacleType.SPIKES -> xGap < 0.050f && playerLift < 0.11f
-                    RunnerObstacleType.TALL_GATE -> xGap < 0.050f && slideTimer <= 0.08f
+                if (project.powerupsEnabled && random.nextInt(100) < 18) {
+                    val powerupType = when (random.nextInt(3)) {
+                        0 -> RunnerPowerupType.SHIELD
+                        1 -> RunnerPowerupType.MAGNET
+                        else -> RunnerPowerupType.DOUBLE_COIN
+                    }
+                    powerups.add(RunnerPowerup(nextId, powerupType, spawnX + 0.50f, 0.50f))
+                    nextId += 1
                 }
             }
-            if (hit) {
-                isGameOver = true
-                isRunning = false
+
+            val hitObstacle = obstacles.firstOrNull { obstacle ->
+                val xGap = abs(obstacle.x - playerX)
+                when (obstacle.type) {
+                    RunnerObstacleType.BOX -> xGap < 0.040f && playerLift < 0.12f
+                    RunnerObstacleType.SPIKES -> xGap < 0.044f && playerLift < 0.11f
+                    RunnerObstacleType.TALL_GATE -> xGap < 0.046f && slideTimer <= 0.08f
+                }
+            }
+            if (hitObstacle != null) {
+                if (shieldTimer > 0f) {
+                    shieldTimer = 0f
+                    obstacles.remove(hitObstacle)
+                    score += 120
+                } else {
+                    isGameOver = true
+                    isRunning = false
+                }
             }
         }
     }
@@ -238,13 +303,23 @@ fun RunnerGameScreen(
                 Text(project.gameTitle, fontWeight = FontWeight.ExtraBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Score: $score")
+                    Text("Best: $bestScore")
                     Text("Coins: $coins")
-                    Text("Speed: ${project.gameSpeed}")
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Character: ${project.selectedCharacter}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Map: ${project.selectedMap}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Speed: ${project.gameSpeed}")
+                    Text("Difficulty: ${project.difficulty}")
+                    Text("Pack: ${project.selectedObstaclePack}")
                 }
+                val active = buildList {
+                    if (shieldTimer > 0f) add("Shield ${shieldTimer.toInt()}s")
+                    if (magnetTimer > 0f) add("Magnet ${magnetTimer.toInt()}s")
+                    if (doubleCoinTimer > 0f) add("2x Coins ${doubleCoinTimer.toInt()}s")
+                }
+                Text(
+                    text = if (active.isEmpty()) "Character: ${project.selectedCharacter}  •  Map: ${project.selectedMap}" else active.joinToString("  •  "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -259,7 +334,9 @@ fun RunnerGameScreen(
                 slideProgress = slideProgress,
                 obstacles = obstacles,
                 coins = coinList,
+                powerups = powerups,
                 distance = distance,
+                shieldActive = shieldTimer > 0f,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -273,7 +350,7 @@ fun RunnerGameScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text("Game Over", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                    Text("Score $score • Coins $coins", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Score $score • Best $bestScore • Coins $coins", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { restart() }) { Text("Restart") }
                 }
             }
@@ -281,7 +358,7 @@ fun RunnerGameScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             Button(onClick = ::jump, modifier = Modifier.weight(1f), enabled = !isGameOver) { Text("Jump") }
-            Button(onClick = ::slide, modifier = Modifier.weight(1f), enabled = !isGameOver) { Text("Slide") }
+            Button(onClick = ::slide, modifier = Modifier.weight(1f), enabled = !isGameOver && canSlide) { Text(if (canSlide) "Slide" else "Slide Off") }
         }
         Spacer(Modifier.height(2.dp))
     }
@@ -294,7 +371,9 @@ private fun RunnerCanvas(
     slideProgress: Float,
     obstacles: List<RunnerObstacle>,
     coins: List<RunnerCoin>,
+    powerups: List<RunnerPowerup>,
     distance: Float,
+    shieldActive: Boolean,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -309,7 +388,9 @@ private fun RunnerCanvas(
                 slideProgress = slideProgress,
                 obstacles = obstacles,
                 coins = coins,
-                distance = distance
+                powerups = powerups,
+                distance = distance,
+                shieldActive = shieldActive
             )
         }
     }
@@ -321,7 +402,9 @@ private fun DrawScope.drawRunnerWorld(
     slideProgress: Float,
     obstacles: List<RunnerObstacle>,
     coins: List<RunnerCoin>,
-    distance: Float
+    powerups: List<RunnerPowerup>,
+    distance: Float,
+    shieldActive: Boolean
 ) {
     val w = size.width
     val h = size.height
@@ -351,6 +434,19 @@ private fun DrawScope.drawRunnerWorld(
     coins.forEach { coin ->
         drawCircle(coinColor, radius = 13f, center = Offset(coin.x * w, coin.y * h))
         drawCircle(Color.White.copy(alpha = 0.45f), radius = 5f, center = Offset(coin.x * w - 4f, coin.y * h - 4f))
+    }
+
+    powerups.forEach { powerup ->
+        val x = powerup.x * w
+        val y = powerup.y * h
+        val color = when (powerup.type) {
+            RunnerPowerupType.SHIELD -> Color(0xFF64FFDA)
+            RunnerPowerupType.MAGNET -> Color(0xFFFF80AB)
+            RunnerPowerupType.DOUBLE_COIN -> Color(0xFFFFD54F)
+        }
+        drawCircle(color.copy(alpha = 0.22f), radius = 26f, center = Offset(x, y))
+        drawCircle(color, radius = 17f, center = Offset(x, y))
+        drawCircle(Color.White.copy(alpha = 0.75f), radius = 6f, center = Offset(x - 5f, y - 5f))
     }
 
     obstacles.forEach { obstacle ->
@@ -396,6 +492,20 @@ private fun DrawScope.drawRunnerWorld(
     val playerBottom = groundY - playerLift * h * 0.42f
     val playerTop = playerBottom - playerHeight
 
+    if (shieldActive) {
+        drawCircle(
+            color = Color(0xFF64FFDA).copy(alpha = 0.23f),
+            radius = 54f,
+            center = Offset(playerX, playerTop + playerHeight / 2f)
+        )
+        drawCircle(
+            color = Color(0xFF64FFDA).copy(alpha = 0.65f),
+            radius = 54f,
+            center = Offset(playerX, playerTop + playerHeight / 2f),
+            style = Stroke(width = 5f)
+        )
+    }
+
     drawRoundRect(
         color = characterColor(project.selectedCharacter, primary),
         topLeft = Offset(playerX - playerWidth / 2f, playerTop),
@@ -411,6 +521,20 @@ private fun DrawScope.drawRunnerWorld(
         cornerRadius = CornerRadius(28f, 28f),
         style = Stroke(width = 2.5f)
     )
+}
+
+private fun obstacleForPack(pack: String, seed: Int): RunnerObstacleType {
+    return when (pack) {
+        "Rocks + Boxes" -> if (seed % 5 == 0) RunnerObstacleType.TALL_GATE else RunnerObstacleType.BOX
+        "Spikes + Pits" -> if (seed % 3 == 0) RunnerObstacleType.BOX else RunnerObstacleType.SPIKES
+        "Barrels + Gates" -> if (seed % 2 == 0) RunnerObstacleType.TALL_GATE else RunnerObstacleType.BOX
+        "Traffic Cones" -> if (seed % 4 == 0) RunnerObstacleType.SPIKES else RunnerObstacleType.BOX
+        else -> when (seed % 3) {
+            0 -> RunnerObstacleType.BOX
+            1 -> RunnerObstacleType.SPIKES
+            else -> RunnerObstacleType.TALL_GATE
+        }
+    }
 }
 
 private fun DrawScope.drawParallaxLayer(distance: Float, w: Float, h: Float, primary: Color) {

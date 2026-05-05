@@ -64,7 +64,7 @@ fun PreviewScreen(
     ) {
         GameBoxHeader(
             title = "Preview Mode ▶️",
-            subtitle = "Phase 2 playtest uses real runner gameplay for 2D Endless Runner. Other templates still use safe preview."
+            subtitle = "Phase 3 connects editor rules to the real runner: speed, difficulty, obstacle pack, coins and powerups. Other templates still use safe preview."
         )
         OutlinedButton(onClick = onBack) { Text("Back to editor") }
 
