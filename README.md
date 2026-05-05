@@ -57,3 +57,11 @@ Added a real playable 2D Platformer template with left/right movement, jump phys
 - Fixed platformer pit gaps so the player cannot run across gaps without jumping.
 - Wider pit layout and safer ground collision lock while falling into pits.
 - Version 0.4.3.
+
+
+## Phase 4.4 Platformer Polish + Editor Connection
+- Platformer map selection now affects gameplay feel: Snow is slippery, Space has lighter gravity/jump, Lava creates harder hazard gaps, Cave uses darker hazard presentation.
+- Obstacle pack now changes the level content: pits/spikes, moving platforms, enemy walkers, coin-focused, and mixed packs produce different layouts.
+- Difficulty changes platform width, pit width, spike/enemy density and overall level challenge.
+- Added moving platform support, improved level spacing, cleaner level-complete overlay, and camera mode behavior.
+- Version updated to 0.4.4.
