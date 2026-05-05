@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.gamebox.builder.data.GameProject
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 private const val PLATFORMER_GROUND_Y = 0.80f
 private const val PLATFORMER_PLAYER_HALF_WIDTH = 0.046f
@@ -134,6 +135,7 @@ fun PlatformerGameScreen(
     var coyoteTimer by remember(runSeed) { mutableFloatStateOf(PLATFORMER_COYOTE_TIME) }
     var jumpBufferTimer by remember(runSeed) { mutableFloatStateOf(0f) }
     var jumpsUsed by remember(runSeed) { mutableIntStateOf(0) }
+    var fallingIntoPit by remember(runSeed) { mutableStateOf(false) }
 
     val level = remember(project.selectedMap, project.selectedObstaclePack, project.difficulty) {
         buildPlatformerLevel(project)
@@ -147,8 +149,20 @@ fun PlatformerGameScreen(
         mutableStateListOf<PlatformerEnemy>().apply { addAll(level.enemies) }
     }
 
-    fun isOverPit(x: Float): Boolean = level.pits.any { pit ->
-        x > pit.startX + 0.025f && x < pit.endX - 0.025f
+    fun isPitUnderFeet(x: Float): Boolean {
+        val leftFoot = x - PLATFORMER_PLAYER_HALF_WIDTH * 0.62f
+        val rightFoot = x + PLATFORMER_PLAYER_HALF_WIDTH * 0.62f
+        return level.pits.any { pit ->
+            rightFoot > pit.startX + 0.006f && leftFoot < pit.endX - 0.006f
+        }
+    }
+
+    fun pathTouchesPit(fromX: Float, toX: Float): Boolean {
+        val left = min(fromX, toX) - PLATFORMER_PLAYER_HALF_WIDTH * 0.34f
+        val right = max(fromX, toX) + PLATFORMER_PLAYER_HALF_WIDTH * 0.34f
+        return level.pits.any { pit ->
+            right > pit.startX + 0.008f && left < pit.endX - 0.008f
+        }
     }
 
     fun requestJump() {
@@ -166,6 +180,7 @@ fun PlatformerGameScreen(
         moveInput = 0f
         damageCooldown = 0.75f
         isOnSurface = true
+        fallingIntoPit = false
         coyoteTimer = PLATFORMER_COYOTE_TIME
         jumpsUsed = 0
         isRunning = true
@@ -231,6 +246,16 @@ fun PlatformerGameScreen(
             val previousY = playerY
             playerX = (playerX + velocityX * dt).coerceIn(0.10f, PLATFORMER_WORLD_LENGTH - 0.20f)
 
+            // Prevent the player from skating across pits while simply holding Right.
+            // Once the player walks off ground into a pit, ground collision stays disabled
+            // until they respawn or actively jump across it.
+            val walkingOnGround = isOnSurface && abs(previousY - PLATFORMER_GROUND_Y) < 0.045f && velocityY >= -0.02f
+            if (walkingOnGround && (isPitUnderFeet(playerX) || pathTouchesPit(previousX, playerX))) {
+                fallingIntoPit = true
+                isOnSurface = false
+                coyoteTimer = PLATFORMER_COYOTE_TIME
+            }
+
             fun feetOnPlatform(platform: PlatformerPlatform, x: Float): Boolean {
                 val leftFoot = x - PLATFORMER_PLAYER_HALF_WIDTH
                 val rightFoot = x + PLATFORMER_PLAYER_HALF_WIDTH
@@ -247,7 +272,7 @@ fun PlatformerGameScreen(
                     if (standingOnSamePlatform || crossedPlatformTop) possibleSurfaces.add(platform.y)
                 }
 
-                val groundAvailable = !isOverPit(x)
+                val groundAvailable = !fallingIntoPit && !isPitUnderFeet(x)
                 val standingOnGround = abs(previousBottom - PLATFORMER_GROUND_Y) < 0.050f && groundAvailable
                 val crossedGround = vy >= -0.02f && groundAvailable &&
                     previousBottom <= PLATFORMER_GROUND_Y + 0.035f && currentBottom >= PLATFORMER_GROUND_Y - 0.030f
@@ -268,6 +293,7 @@ fun PlatformerGameScreen(
                 playerY = landingSurface
                 velocityY = 0f
                 isOnSurface = true
+                fallingIntoPit = false
                 coyoteTimer = PLATFORMER_COYOTE_TIME
                 jumpsUsed = 0
             } else {
@@ -284,6 +310,7 @@ fun PlatformerGameScreen(
                     velocityY = -1.16f - project.gameSpeed * 0.020f
                     playerY -= 0.010f
                     isOnSurface = false
+                    fallingIntoPit = false
                     coyoteTimer = 0f
                     jumpBufferTimer = 0f
                     jumpsUsed += 1
@@ -533,10 +560,10 @@ private fun buildPlatformerLevel(project: GameProject): PlatformerLevel {
         if (project.difficulty >= 5) add(PlatformerSpike(4, 7.10f, PLATFORMER_GROUND_Y))
     }
     val pits = listOf(
-        PlatformerPit(1.02f, 1.16f),
-        PlatformerPit(3.06f, 3.22f),
-        PlatformerPit(4.78f, 4.94f),
-        PlatformerPit(6.34f, 6.50f)
+        PlatformerPit(1.02f, 1.31f),
+        PlatformerPit(3.02f, 3.36f),
+        PlatformerPit(4.72f, 5.08f),
+        PlatformerPit(6.26f, 6.62f)
     )
     return PlatformerLevel(platforms, coins, enemies, spikes, pits, checkpointX = 3.05f, flagX = 7.62f)
 }

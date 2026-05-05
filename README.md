@@ -51,3 +51,9 @@ Added a real playable 2D Platformer template with left/right movement, jump phys
 - Expanded the platformer level length and improved platform/coin/checkpoint/flag spacing.
 - Simplified game-over restart flow and improved lives handling.
 - Version updated to 0.4.2.
+
+
+## Phase 4.3
+- Fixed platformer pit gaps so the player cannot run across gaps without jumping.
+- Wider pit layout and safer ground collision lock while falling into pits.
+- Version 0.4.3.
