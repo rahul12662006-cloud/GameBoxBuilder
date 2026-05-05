@@ -65,3 +65,13 @@ Added a real playable 2D Platformer template with left/right movement, jump phys
 - Difficulty changes platform width, pit width, spike/enemy density and overall level challenge.
 - Added moving platform support, improved level spacing, cleaner level-complete overlay, and camera mode behavior.
 - Version updated to 0.4.4.
+
+
+## Phase 5 3D Endless Runner Playable
+- Added a real playable 3D Endless Runner template using a lightweight fake-3D perspective renderer.
+- Added 3-lane movement, lane-left/lane-right, jump, slide, obstacles, coins, score, best score, game over and restart.
+- Visual maps now affect the scene style: City Road, Jungle Temple, Desert Ruins, Snow Bridge and Cyber Track.
+- Obstacle packs now affect 3D runner obstacle style: rocks/barrels, gates/ramps, cars/cones, boxes/fences and mixed starter pack.
+- Editor speed, difficulty, coins and powerups are connected to the 3D runner.
+- Powerups include Shield, Magnet and 2x Coins.
+- Version updated to 0.5.0.

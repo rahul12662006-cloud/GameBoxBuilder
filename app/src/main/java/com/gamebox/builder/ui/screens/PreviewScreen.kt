@@ -58,6 +58,11 @@ fun PreviewScreen(
         return
     }
 
+    if (project.templateId == "3d_endless_runner") {
+        ThreeDRunnerGameScreen(project = project, onBack = onBack)
+        return
+    }
+
     var lane by remember { mutableIntStateOf(1) }
     var actionTick by remember { mutableIntStateOf(0) }
 
