@@ -1,0 +1,15 @@
+GameBox Builder Phase 2.1 Patch
+
+Fixes:
+- Made 2D Runner collision/hitbox more forgiving.
+- Player no longer gets game-over from visually far obstacles.
+- Increased starting obstacle distance.
+- Increased generated obstacle spacing.
+- Coins now spawn after obstacles with better spacing.
+
+Apply from repo root:
+unzip -o /sdcard/Download/GameBoxBuilder_Phase2_1_HitboxPatch.zip
+git add .
+git commit -m "Fix 2D runner hitbox and obstacle spacing"
+git pull --rebase origin main
+git push origin main

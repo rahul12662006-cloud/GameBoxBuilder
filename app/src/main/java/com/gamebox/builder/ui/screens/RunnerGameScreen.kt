@@ -82,17 +82,18 @@ fun RunnerGameScreen(
     var lastFrameNanos by remember(runSeed) { mutableLongStateOf(0L) }
 
     val obstacles = remember(runSeed) {
+        // Wider starting gaps make the first playtest feel fair on phone screens.
         mutableStateListOf(
-            RunnerObstacle(1, RunnerObstacleType.BOX, 1.10f),
-            RunnerObstacle(2, RunnerObstacleType.SPIKES, 1.58f),
-            RunnerObstacle(3, RunnerObstacleType.TALL_GATE, 2.08f)
+            RunnerObstacle(1, RunnerObstacleType.BOX, 1.42f),
+            RunnerObstacle(2, RunnerObstacleType.SPIKES, 2.18f),
+            RunnerObstacle(3, RunnerObstacleType.TALL_GATE, 2.98f)
         )
     }
     val coinList = remember(runSeed) {
         mutableStateListOf(
-            RunnerCoin(4, 1.32f, 0.58f),
-            RunnerCoin(5, 1.82f, 0.48f),
-            RunnerCoin(6, 2.32f, 0.58f)
+            RunnerCoin(4, 1.65f, 0.58f),
+            RunnerCoin(5, 2.42f, 0.48f),
+            RunnerCoin(6, 3.18f, 0.58f)
         )
     }
 
@@ -163,26 +164,38 @@ fun RunnerGameScreen(
             coinList.addAll(newCoins)
 
             val farthestObstacle = obstacles.maxOfOrNull { it.x } ?: 0f
-            if (farthestObstacle < 1.25f) {
+            if (farthestObstacle < 1.55f) {
                 val random = Random(nextId + score + project.difficulty * 13)
                 val type = when (random.nextInt(3)) {
                     0 -> RunnerObstacleType.BOX
                     1 -> RunnerObstacleType.SPIKES
                     else -> RunnerObstacleType.TALL_GATE
                 }
-                obstacles.add(RunnerObstacle(nextId, type, 1.55f + random.nextFloat() * 0.22f))
+                // Spawn further away and keep a real gap between obstacles.
+                // This avoids unfair back-to-back hits on small mobile screens.
+                val spawnX = max(1.90f, farthestObstacle + 0.72f + random.nextFloat() * 0.34f)
+                obstacles.add(RunnerObstacle(nextId, type, spawnX))
                 nextId += 1
                 if (project.coinsEnabled) {
-                    coinList.add(RunnerCoin(nextId, 1.72f + random.nextFloat() * 0.25f, if (type == RunnerObstacleType.TALL_GATE) 0.52f else 0.58f))
+                    coinList.add(
+                        RunnerCoin(
+                            nextId,
+                            spawnX + 0.20f + random.nextFloat() * 0.18f,
+                            if (type == RunnerObstacleType.TALL_GATE) 0.52f else 0.58f
+                        )
+                    )
                     nextId += 1
                 }
             }
 
             val hit = obstacles.any { obstacle ->
-                abs(obstacle.x - playerX) < 0.075f && when (obstacle.type) {
-                    RunnerObstacleType.BOX -> playerLift < 0.22f
-                    RunnerObstacleType.SPIKES -> playerLift < 0.18f
-                    RunnerObstacleType.TALL_GATE -> slideTimer <= 0f
+                // Forgiving hitboxes: collisions now use a smaller center overlap than the
+                // drawn sprites, so the player does not die while visually far away.
+                val xGap = abs(obstacle.x - playerX)
+                when (obstacle.type) {
+                    RunnerObstacleType.BOX -> xGap < 0.046f && playerLift < 0.13f
+                    RunnerObstacleType.SPIKES -> xGap < 0.050f && playerLift < 0.11f
+                    RunnerObstacleType.TALL_GATE -> xGap < 0.050f && slideTimer <= 0.08f
                 }
             }
             if (hit) {
