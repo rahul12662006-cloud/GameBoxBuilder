@@ -53,6 +53,13 @@ import com.gamebox.builder.data.GameProject
 import kotlin.math.abs
 import kotlin.math.max
 
+private const val PLATFORMER_GROUND_Y = 0.80f
+private const val PLATFORMER_PLAYER_HALF_WIDTH = 0.046f
+private const val PLATFORMER_PLAYER_HEIGHT = 0.145f
+private const val PLATFORMER_WORLD_LENGTH = 8.25f
+private const val PLATFORMER_COYOTE_TIME = 0.12f
+private const val PLATFORMER_JUMP_BUFFER = 0.13f
+
 private data class PlatformerPlatform(
     val id: Int,
     val x: Float,
@@ -88,6 +95,16 @@ private data class PlatformerPit(
     val endX: Float
 )
 
+private data class PlatformerLevel(
+    val platforms: List<PlatformerPlatform>,
+    val coins: List<PlatformerCoin>,
+    val enemies: List<PlatformerEnemy>,
+    val spikes: List<PlatformerSpike>,
+    val pits: List<PlatformerPit>,
+    val checkpointX: Float,
+    val flagX: Float
+)
+
 @Composable
 fun PlatformerGameScreen(
     project: GameProject,
@@ -96,16 +113,14 @@ fun PlatformerGameScreen(
     val context = LocalContext.current
     val scorePrefs = remember(project.projectId) { context.getSharedPreferences("gamebox_platformer_scores", 0) }
     val bestScoreKey = "best_platformer_${project.projectId}"
-    val levelLength = 6.2f
-    val groundY = 0.80f
-    val playerHalfWidth = 0.060f
 
     var runSeed by remember(project.projectId, project.updatedAt) { mutableIntStateOf(1) }
     var isRunning by remember(runSeed) { mutableStateOf(true) }
     var isGameOver by remember(runSeed) { mutableStateOf(false) }
     var isLevelComplete by remember(runSeed) { mutableStateOf(false) }
     var playerX by remember(runSeed) { mutableFloatStateOf(0.18f) }
-    var playerY by remember(runSeed) { mutableFloatStateOf(groundY) }
+    var playerY by remember(runSeed) { mutableFloatStateOf(PLATFORMER_GROUND_Y) }
+    var velocityX by remember(runSeed) { mutableFloatStateOf(0f) }
     var velocityY by remember(runSeed) { mutableFloatStateOf(0f) }
     var moveInput by remember(runSeed) { mutableFloatStateOf(0f) }
     var checkpointX by remember(runSeed) { mutableFloatStateOf(0.18f) }
@@ -116,11 +131,14 @@ fun PlatformerGameScreen(
     var bestScore by remember(project.projectId) { mutableIntStateOf(scorePrefs.getInt(bestScoreKey, 0)) }
     var isOnSurface by remember(runSeed) { mutableStateOf(true) }
     var damageCooldown by remember(runSeed) { mutableFloatStateOf(0f) }
+    var coyoteTimer by remember(runSeed) { mutableFloatStateOf(PLATFORMER_COYOTE_TIME) }
+    var jumpBufferTimer by remember(runSeed) { mutableFloatStateOf(0f) }
+    var jumpsUsed by remember(runSeed) { mutableIntStateOf(0) }
 
     val level = remember(project.selectedMap, project.selectedObstaclePack, project.difficulty) {
-        buildPlatformerLevel(project, groundY)
+        buildPlatformerLevel(project)
     }
-    val coinsList = remember(runSeed, project.coinsEnabled, project.selectedObstaclePack) {
+    val coinsList = remember(runSeed, project.coinsEnabled, project.selectedObstaclePack, project.difficulty) {
         mutableStateListOf<PlatformerCoin>().apply {
             if (project.coinsEnabled) addAll(level.coins)
         }
@@ -130,40 +148,39 @@ fun PlatformerGameScreen(
     }
 
     fun isOverPit(x: Float): Boolean = level.pits.any { pit ->
-        x > pit.startX + 0.035f && x < pit.endX - 0.035f
+        x > pit.startX + 0.025f && x < pit.endX - 0.025f
     }
 
-    fun jump() {
-        if (!isGameOver && !isLevelComplete && isOnSurface) {
-            velocityY = -1.18f - project.difficulty * 0.015f
-            isOnSurface = false
+    fun requestJump() {
+        if (!isGameOver && !isLevelComplete) {
+            jumpBufferTimer = PLATFORMER_JUMP_BUFFER
             isRunning = true
         }
     }
 
-    fun restartFromCheckpoint() {
+    fun respawnAtCheckpoint() {
         playerX = checkpointX.coerceAtLeast(0.18f)
-        playerY = groundY
+        playerY = PLATFORMER_GROUND_Y
+        velocityX = 0f
         velocityY = 0f
         moveInput = 0f
-        damageCooldown = 0.45f
+        damageCooldown = 0.75f
         isOnSurface = true
+        coyoteTimer = PLATFORMER_COYOTE_TIME
+        jumpsUsed = 0
         isRunning = true
-        isGameOver = false
-        isLevelComplete = false
     }
 
     fun takeDamage() {
         if (damageCooldown > 0f || isGameOver || isLevelComplete) return
-        val nextLives = (lives - 1).coerceAtLeast(0)
-        lives = nextLives
-        damageCooldown = 0.60f
-        if (nextLives <= 0) {
+        lives = (lives - 1).coerceAtLeast(0)
+        if (lives <= 0) {
             isGameOver = true
             isRunning = false
             moveInput = 0f
+            velocityX = 0f
         } else {
-            restartFromCheckpoint()
+            respawnAtCheckpoint()
         }
     }
 
@@ -178,7 +195,7 @@ fun PlatformerGameScreen(
         }
     }
 
-    LaunchedEffect(runSeed, project.gameSpeed, project.difficulty, project.selectedObstaclePack, project.coinsEnabled) {
+    LaunchedEffect(runSeed, project.gameSpeed, project.difficulty, project.selectedObstaclePack, project.coinsEnabled, project.powerupsEnabled) {
         while (true) {
             val frameTime = withFrameNanos { it }
             if (lastFrameNanos == 0L) {
@@ -189,52 +206,97 @@ fun PlatformerGameScreen(
             lastFrameNanos = frameTime
 
             if (damageCooldown > 0f) damageCooldown = (damageCooldown - dt).coerceAtLeast(0f)
+            if (jumpBufferTimer > 0f) jumpBufferTimer = (jumpBufferTimer - dt).coerceAtLeast(0f)
+            if (coyoteTimer > 0f) coyoteTimer = (coyoteTimer - dt).coerceAtLeast(0f)
+
             if (!isRunning || isGameOver || isLevelComplete) continue
 
-            val moveSpeed = 0.82f + project.gameSpeed * 0.070f
+            // Smooth horizontal movement: hold buttons now feel like a real platformer instead of tiny nudges.
+            val maxRunSpeed = 0.82f + project.gameSpeed * 0.065f
+            val acceleration = 8.5f
+            val friction = 10.0f
             if (moveInput != 0f) {
-                playerX = (playerX + moveInput * moveSpeed * dt).coerceIn(0.10f, levelLength - 0.18f)
-            }
-
-            val previousY = playerY
-            val gravity = 2.20f + project.difficulty * 0.04f
-            velocityY += gravity * dt
-            playerY += velocityY * dt
-
-            var landedOnSurface = false
-            var landingY = Float.POSITIVE_INFINITY
-
-            level.platforms.forEach { platform ->
-                val withinX = playerX + playerHalfWidth > platform.x - 0.015f &&
-                    playerX - playerHalfWidth < platform.x + platform.width + 0.015f
-                val crossedTop = previousY <= platform.y + 0.012f && playerY >= platform.y - 0.006f
-                if (velocityY >= 0f && withinX && crossedTop && platform.y < landingY) {
-                    landingY = platform.y
-                    landedOnSurface = true
+                velocityX += moveInput * acceleration * dt
+                velocityX = velocityX.coerceIn(-maxRunSpeed, maxRunSpeed)
+            } else {
+                val slowAmount = friction * dt
+                velocityX = when {
+                    velocityX > slowAmount -> velocityX - slowAmount
+                    velocityX < -slowAmount -> velocityX + slowAmount
+                    else -> 0f
                 }
             }
 
-            val canStandOnGround = !isOverPit(playerX)
-            if (velocityY >= 0f && canStandOnGround && previousY <= groundY + 0.012f && playerY >= groundY - 0.006f && groundY < landingY) {
-                landingY = groundY
-                landedOnSurface = true
+            val previousX = playerX
+            val previousY = playerY
+            playerX = (playerX + velocityX * dt).coerceIn(0.10f, PLATFORMER_WORLD_LENGTH - 0.20f)
+
+            fun feetOnPlatform(platform: PlatformerPlatform, x: Float): Boolean {
+                val leftFoot = x - PLATFORMER_PLAYER_HALF_WIDTH
+                val rightFoot = x + PLATFORMER_PLAYER_HALF_WIDTH
+                return rightFoot > platform.x - 0.035f && leftFoot < platform.x + platform.width + 0.035f
             }
 
-            if (landedOnSurface) {
-                playerY = landingY
+            fun surfaceUnderPlayer(x: Float, previousBottom: Float, currentBottom: Float, vy: Float): Float? {
+                val possibleSurfaces = mutableListOf<Float>()
+
+                level.platforms.forEach { platform ->
+                    val standingOnSamePlatform = abs(previousBottom - platform.y) < 0.040f && feetOnPlatform(platform, x)
+                    val crossedPlatformTop = vy >= -0.02f && feetOnPlatform(platform, x) &&
+                        previousBottom <= platform.y + 0.030f && currentBottom >= platform.y - 0.030f
+                    if (standingOnSamePlatform || crossedPlatformTop) possibleSurfaces.add(platform.y)
+                }
+
+                val groundAvailable = !isOverPit(x)
+                val standingOnGround = abs(previousBottom - PLATFORMER_GROUND_Y) < 0.050f && groundAvailable
+                val crossedGround = vy >= -0.02f && groundAvailable &&
+                    previousBottom <= PLATFORMER_GROUND_Y + 0.035f && currentBottom >= PLATFORMER_GROUND_Y - 0.030f
+                if (standingOnGround || crossedGround) possibleSurfaces.add(PLATFORMER_GROUND_Y)
+
+                return possibleSurfaces.minOrNull()
+            }
+
+            val gravity = 2.12f + project.difficulty * 0.035f
+            velocityY += gravity * dt
+            playerY += velocityY * dt
+
+            val landingSurface = if (velocityY >= -0.02f) {
+                surfaceUnderPlayer(playerX, previousY, playerY, velocityY)
+            } else null
+
+            if (landingSurface != null) {
+                playerY = landingSurface
                 velocityY = 0f
                 isOnSurface = true
+                coyoteTimer = PLATFORMER_COYOTE_TIME
+                jumpsUsed = 0
             } else {
+                // If the player walked off a platform, coyoteTimer gives a small fair jump window.
+                if (isOnSurface && abs(previousX - playerX) > 0.0001f) coyoteTimer = PLATFORMER_COYOTE_TIME
                 isOnSurface = false
             }
 
-            if (playerY > 1.07f) {
+            val canDoubleJump = project.powerupsEnabled
+            if (jumpBufferTimer > 0f) {
+                val canGroundJump = isOnSurface || coyoteTimer > 0f
+                val canAirJump = canDoubleJump && jumpsUsed < 1 && !canGroundJump
+                if (canGroundJump || canAirJump) {
+                    velocityY = -1.16f - project.gameSpeed * 0.020f
+                    playerY -= 0.010f
+                    isOnSurface = false
+                    coyoteTimer = 0f
+                    jumpBufferTimer = 0f
+                    jumpsUsed += 1
+                }
+            }
+
+            if (playerY > 1.09f) {
                 takeDamage()
                 continue
             }
 
             val newCoins = coinsList.map { coin ->
-                if (!coin.collected && abs(playerX - coin.x) < 0.070f && abs(playerY - coin.y) < 0.16f) {
+                if (!coin.collected && abs(playerX - coin.x) < 0.080f && abs(playerY - coin.y) < 0.17f) {
                     coins += 1
                     score += 125
                     coin.copy(collected = true)
@@ -243,14 +305,14 @@ fun PlatformerGameScreen(
             coinsList.clear()
             coinsList.addAll(newCoins)
 
-            val enemySpeed = 0.10f + project.difficulty * 0.012f
+            val enemySpeed = 0.13f + project.difficulty * 0.014f
             val newEnemies = enemies.map { enemy ->
                 if (!enemy.alive) enemy else {
                     var nextX = enemy.x + enemy.walkDir * enemySpeed * dt
                     var nextDir = enemy.walkDir
-                    if (nextX < enemy.homeX - 0.16f || nextX > enemy.homeX + 0.16f) {
+                    if (nextX < enemy.homeX - 0.20f || nextX > enemy.homeX + 0.20f) {
                         nextDir *= -1f
-                        nextX = nextX.coerceIn(enemy.homeX - 0.16f, enemy.homeX + 0.16f)
+                        nextX = nextX.coerceIn(enemy.homeX - 0.20f, enemy.homeX + 0.20f)
                     }
                     enemy.copy(x = nextX, walkDir = nextDir)
                 }
@@ -259,7 +321,7 @@ fun PlatformerGameScreen(
             enemies.addAll(newEnemies)
 
             val touchedSpike = level.spikes.any { spike ->
-                abs(playerX - spike.x) < 0.038f && playerY > spike.y - 0.050f && velocityY >= -0.05f
+                abs(playerX - spike.x) < 0.034f && playerY > spike.y - 0.055f && playerY < spike.y + 0.030f && velocityY >= -0.10f
             }
             if (touchedSpike) {
                 takeDamage()
@@ -270,9 +332,9 @@ fun PlatformerGameScreen(
                 enemy.alive && abs(playerX - enemy.x) < 0.070f && abs(playerY - enemy.y) < 0.13f
             }
             if (touchedEnemy != null) {
-                if (velocityY > 0.20f && playerY < touchedEnemy.y - 0.035f) {
+                if (velocityY > 0.18f && playerY < touchedEnemy.y - 0.030f) {
                     enemies.remove(touchedEnemy)
-                    velocityY = -0.68f
+                    velocityY = -0.72f
                     score += 180
                 } else {
                     takeDamage()
@@ -284,19 +346,20 @@ fun PlatformerGameScreen(
                 checkpointX = level.checkpointX
                 score += 100
             }
-            score = max(score, (playerX * 70).toInt() + coins * 100)
+            score = max(score, (playerX * 80).toInt() + coins * 100)
             if (playerX > level.flagX) {
                 isLevelComplete = true
                 isRunning = false
                 moveInput = 0f
+                velocityX = 0f
                 score += 500 + lives * 150
             }
         }
     }
 
     val cameraX by animateFloatAsState(
-        targetValue = (playerX - 0.23f).coerceIn(0f, levelLength - 1f),
-        animationSpec = tween(80),
+        targetValue = (playerX - 0.24f).coerceIn(0f, PLATFORMER_WORLD_LENGTH - 1f),
+        animationSpec = tween(70),
         label = "platformer-camera"
     )
 
@@ -336,6 +399,9 @@ fun PlatformerGameScreen(
                     Text("Difficulty: ${project.difficulty}")
                 }
                 Text("Pack: ${project.selectedObstaclePack}  •  Character: ${project.selectedCharacter}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (project.powerupsEnabled) {
+                    Text("Powerup: double jump enabled", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -361,17 +427,14 @@ fun PlatformerGameScreen(
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .background(Color(0xDD080914), RoundedCornerShape(28.dp))
+                        .background(Color(0xEE080914), RoundedCornerShape(28.dp))
                         .padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(if (isLevelComplete) "Level Complete" else "Game Over", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                     Text("Score $score • Best $bestScore • Coins $coins", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = { restartFromCheckpoint() }) { Text("Checkpoint") }
-                        Button(onClick = { fullRestart() }) { Text("Restart") }
-                    }
+                    Button(onClick = { fullRestart() }) { Text("Restart") }
                 }
             }
         }
@@ -384,7 +447,7 @@ fun PlatformerGameScreen(
                 onDown = { moveInput = -1f; isRunning = true },
                 onUp = { if (moveInput < 0f) moveInput = 0f }
             )
-            Button(onClick = { jump() }, modifier = Modifier.weight(1f).height(58.dp), enabled = !isGameOver && !isLevelComplete) { Text("Jump") }
+            Button(onClick = { requestJump() }, modifier = Modifier.weight(1f).height(58.dp), enabled = !isGameOver && !isLevelComplete) { Text("Jump") }
             HoldControlButton(
                 label = "Right",
                 enabled = !isGameOver && !isLevelComplete,
@@ -431,54 +494,51 @@ private fun HoldControlButton(
     }
 }
 
-private data class PlatformerLevel(
-    val platforms: List<PlatformerPlatform>,
-    val coins: List<PlatformerCoin>,
-    val enemies: List<PlatformerEnemy>,
-    val spikes: List<PlatformerSpike>,
-    val pits: List<PlatformerPit>,
-    val checkpointX: Float,
-    val flagX: Float
-)
-
-private fun buildPlatformerLevel(project: GameProject, groundY: Float): PlatformerLevel {
+private fun buildPlatformerLevel(project: GameProject): PlatformerLevel {
     val extraEnemy = project.difficulty >= 3 || project.selectedObstaclePack.contains("Enemy", ignoreCase = true)
     val moreSpikes = project.selectedObstaclePack.contains("Spike", ignoreCase = true) || project.difficulty >= 4
     val platforms = listOf(
-        PlatformerPlatform(1, 0.58f, 0.66f, 0.42f),
-        PlatformerPlatform(2, 1.25f, 0.55f, 0.40f),
-        PlatformerPlatform(3, 1.92f, 0.64f, 0.46f),
-        PlatformerPlatform(4, 2.68f, 0.58f, 0.42f),
-        PlatformerPlatform(5, 3.42f, 0.69f, 0.42f),
-        PlatformerPlatform(6, 4.16f, 0.54f, 0.45f),
-        PlatformerPlatform(7, 4.96f, 0.64f, 0.42f)
+        PlatformerPlatform(1, 0.52f, 0.68f, 0.44f),
+        PlatformerPlatform(2, 1.18f, 0.58f, 0.48f),
+        PlatformerPlatform(3, 1.96f, 0.66f, 0.48f),
+        PlatformerPlatform(4, 2.74f, 0.56f, 0.50f),
+        PlatformerPlatform(5, 3.54f, 0.68f, 0.46f),
+        PlatformerPlatform(6, 4.22f, 0.55f, 0.50f),
+        PlatformerPlatform(7, 5.02f, 0.66f, 0.52f),
+        PlatformerPlatform(8, 5.84f, 0.58f, 0.46f),
+        PlatformerPlatform(9, 6.62f, 0.68f, 0.50f)
     )
     val coins = listOf(
-        PlatformerCoin(1, 0.78f, 0.57f),
-        PlatformerCoin(2, 1.45f, 0.46f),
-        PlatformerCoin(3, 2.12f, 0.55f),
-        PlatformerCoin(4, 2.88f, 0.49f),
-        PlatformerCoin(5, 3.60f, 0.60f),
-        PlatformerCoin(6, 4.35f, 0.45f),
-        PlatformerCoin(7, 5.16f, 0.55f),
-        PlatformerCoin(8, 5.58f, 0.68f)
+        PlatformerCoin(1, 0.72f, 0.58f),
+        PlatformerCoin(2, 1.40f, 0.49f),
+        PlatformerCoin(3, 2.20f, 0.57f),
+        PlatformerCoin(4, 2.98f, 0.47f),
+        PlatformerCoin(5, 3.74f, 0.59f),
+        PlatformerCoin(6, 4.46f, 0.46f),
+        PlatformerCoin(7, 5.26f, 0.56f),
+        PlatformerCoin(8, 6.04f, 0.49f),
+        PlatformerCoin(9, 6.84f, 0.59f),
+        PlatformerCoin(10, 7.36f, 0.66f)
     )
     val enemies = buildList {
-        add(PlatformerEnemy(1, 1.78f, 1.78f, groundY))
-        add(PlatformerEnemy(2, 3.24f, 3.24f, groundY))
-        if (extraEnemy) add(PlatformerEnemy(3, 4.64f, 4.64f, groundY))
+        add(PlatformerEnemy(1, 1.78f, 1.78f, PLATFORMER_GROUND_Y))
+        add(PlatformerEnemy(2, 3.32f, 3.32f, PLATFORMER_GROUND_Y))
+        if (extraEnemy) add(PlatformerEnemy(3, 4.84f, 4.84f, PLATFORMER_GROUND_Y))
+        if (project.difficulty >= 5) add(PlatformerEnemy(4, 6.18f, 6.18f, PLATFORMER_GROUND_Y))
     }
     val spikes = buildList {
-        add(PlatformerSpike(1, 2.48f, groundY))
-        add(PlatformerSpike(2, 3.96f, groundY))
-        if (moreSpikes) add(PlatformerSpike(3, 5.48f, groundY))
+        add(PlatformerSpike(1, 2.58f, PLATFORMER_GROUND_Y))
+        add(PlatformerSpike(2, 4.08f, PLATFORMER_GROUND_Y))
+        if (moreSpikes) add(PlatformerSpike(3, 5.58f, PLATFORMER_GROUND_Y))
+        if (project.difficulty >= 5) add(PlatformerSpike(4, 7.10f, PLATFORMER_GROUND_Y))
     }
     val pits = listOf(
-        PlatformerPit(1.08f, 1.19f),
-        PlatformerPit(3.10f, 3.23f),
-        PlatformerPit(4.76f, 4.90f)
+        PlatformerPit(1.02f, 1.16f),
+        PlatformerPit(3.06f, 3.22f),
+        PlatformerPit(4.78f, 4.94f),
+        PlatformerPit(6.34f, 6.50f)
     )
-    return PlatformerLevel(platforms, coins, enemies, spikes, pits, checkpointX = 3.02f, flagX = 5.74f)
+    return PlatformerLevel(platforms, coins, enemies, spikes, pits, checkpointX = 3.05f, flagX = 7.62f)
 }
 
 @Composable
@@ -546,28 +606,27 @@ private fun DrawScope.drawPlatformerWorld(
         size = size
     )
 
-    repeat(8) { index ->
-        val x = (index * 0.42f - (cameraX * 0.22f % 0.42f)) * w
-        drawCircle(primary.copy(alpha = 0.10f), radius = 34f + index % 3 * 8f, center = Offset(x, h * (0.18f + (index % 4) * 0.06f)))
+    repeat(10) { index ->
+        val x = (index * 0.40f - (cameraX * 0.22f % 0.40f)) * w
+        drawCircle(primary.copy(alpha = 0.10f), radius = 30f + index % 3 * 7f, center = Offset(x, h * (0.16f + (index % 4) * 0.065f)))
     }
 
-    val groundY = 0.80f
     var segmentStart = cameraX - 0.10f
     level.pits.sortedBy { it.startX }.forEach { pit ->
         val left = sx(pit.startX)
         val right = sx(pit.endX)
         if (pit.startX > segmentStart) {
-            drawLine(primary.copy(alpha = 0.9f), Offset(sx(segmentStart), sy(groundY)), Offset(left, sy(groundY)), strokeWidth = 8f)
+            drawLine(primary.copy(alpha = 0.92f), Offset(sx(segmentStart), sy(PLATFORMER_GROUND_Y)), Offset(left, sy(PLATFORMER_GROUND_Y)), strokeWidth = 8f)
         }
         drawRoundRect(
-            color = Color.Black.copy(alpha = 0.65f),
-            topLeft = Offset(left, sy(groundY)),
-            size = Size(right - left, h * 0.16f),
+            color = Color.Black.copy(alpha = 0.70f),
+            topLeft = Offset(left, sy(PLATFORMER_GROUND_Y)),
+            size = Size(right - left, h * 0.17f),
             cornerRadius = CornerRadius(8f, 8f)
         )
         segmentStart = pit.endX
     }
-    drawLine(primary.copy(alpha = 0.9f), Offset(sx(segmentStart), sy(groundY)), Offset(w, sy(groundY)), strokeWidth = 8f)
+    drawLine(primary.copy(alpha = 0.92f), Offset(sx(segmentStart), sy(PLATFORMER_GROUND_Y)), Offset(w, sy(PLATFORMER_GROUND_Y)), strokeWidth = 8f)
     drawLine(Color.White.copy(alpha = 0.10f), Offset(0f, sy(0.84f)), Offset(w, sy(0.84f)), strokeWidth = 3f)
 
     level.platforms.forEach { platform ->
@@ -576,13 +635,13 @@ private fun DrawScope.drawPlatformerWorld(
         val width = platform.width * w
         val color = if (platform.moving) Color(0xFF00E5FF) else primary
         drawRoundRect(
-            color = color.copy(alpha = 0.95f),
+            color = color.copy(alpha = 0.96f),
             topLeft = Offset(left, top),
             size = Size(width, 18f),
             cornerRadius = CornerRadius(9f, 9f)
         )
         drawRoundRect(
-            color = color.copy(alpha = 0.18f),
+            color = color.copy(alpha = 0.20f),
             topLeft = Offset(left + 7f, top + 18f),
             size = Size(width - 14f, 38f),
             cornerRadius = CornerRadius(8f, 8f)
@@ -623,7 +682,7 @@ private fun DrawScope.drawPlatformerWorld(
     }
 
     val checkpointScreenX = sx(level.checkpointX)
-    drawLine(Color(0xFFFFD54F), Offset(checkpointScreenX, sy(groundY)), Offset(checkpointScreenX, sy(0.56f)), strokeWidth = 6f)
+    drawLine(Color(0xFFFFD54F), Offset(checkpointScreenX, sy(PLATFORMER_GROUND_Y)), Offset(checkpointScreenX, sy(0.56f)), strokeWidth = 6f)
     drawRoundRect(
         color = if (checkpointX >= level.checkpointX) Color(0xFF64FFDA) else Color(0xFFFFD54F),
         topLeft = Offset(checkpointScreenX, sy(0.56f)),
@@ -632,7 +691,7 @@ private fun DrawScope.drawPlatformerWorld(
     )
 
     val flagX = sx(level.flagX)
-    drawLine(Color.White.copy(alpha = 0.85f), Offset(flagX, sy(groundY)), Offset(flagX, sy(0.45f)), strokeWidth = 7f)
+    drawLine(Color.White.copy(alpha = 0.85f), Offset(flagX, sy(PLATFORMER_GROUND_Y)), Offset(flagX, sy(0.45f)), strokeWidth = 7f)
     drawRoundRect(
         color = primary,
         topLeft = Offset(flagX, sy(0.45f)),
@@ -642,8 +701,8 @@ private fun DrawScope.drawPlatformerWorld(
 
     val playerScreenX = sx(playerX)
     val playerBottom = sy(playerY)
-    val playerHeight = 72f
-    val playerWidth = 48f
+    val playerHeight = PLATFORMER_PLAYER_HEIGHT * h
+    val playerWidth = PLATFORMER_PLAYER_HALF_WIDTH * 2f * w
     val alpha = if (damageCooldown > 0f) 0.55f else 1f
     drawRoundRect(
         color = platformerCharacterColor(project.selectedCharacter, primary).copy(alpha = alpha),
@@ -651,7 +710,7 @@ private fun DrawScope.drawPlatformerWorld(
         size = Size(playerWidth, playerHeight),
         cornerRadius = CornerRadius(16f, 16f)
     )
-    drawCircle(Color.White.copy(alpha = 0.90f), radius = 10f, center = Offset(playerScreenX + 9f, playerBottom - 53f))
+    drawCircle(Color.White.copy(alpha = 0.90f), radius = 10f, center = Offset(playerScreenX + playerWidth * 0.18f, playerBottom - playerHeight * 0.72f))
 
     drawRoundRect(
         color = Color.White.copy(alpha = 0.12f),

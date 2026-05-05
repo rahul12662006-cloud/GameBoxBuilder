@@ -42,3 +42,12 @@ Added a real playable 2D Platformer template with left/right movement, jump phys
 - Replaced tap-nudge movement with hold-to-move left/right controls.
 - Added forgiving platform edge detection, safer pit detection, and lives clamped to 0.
 - Improved ground drawing so pits show actual gaps.
+
+
+## Phase 4.2 Platformer Gameplay Upgrade
+- Rebuilt platformer movement with acceleration, friction, smoother jump physics, jump buffering and coyote time.
+- Fixed platform collision more deeply: player stays attached to platform tops while moving and no longer falls through supported surfaces.
+- Added optional double-jump when powerups are enabled.
+- Expanded the platformer level length and improved platform/coin/checkpoint/flag spacing.
+- Simplified game-over restart flow and improved lives handling.
+- Version updated to 0.4.2.
