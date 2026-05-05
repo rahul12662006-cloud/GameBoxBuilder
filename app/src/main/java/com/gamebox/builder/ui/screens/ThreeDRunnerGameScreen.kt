@@ -419,9 +419,9 @@ private fun ThreeDRunnerCanvas(
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF080914))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF050512))
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             drawThreeDRunnerWorld(
                 project = project,
                 visualLane = visualLane,
@@ -452,8 +452,8 @@ private fun DrawScope.drawThreeDRunnerWorld(
 ) {
     val w = size.width
     val h = size.height
-    val horizonY = h * 0.20f
-    val trackBottomY = h * 0.90f
+    val horizonY = h * 0.12f
+    val trackBottomY = h * 1.02f
     val centerX = w * 0.50f
     val primary = threeDThemePrimary(project.uiTheme)
     val map = threeDMapPalette(project.selectedMap)
@@ -467,14 +467,22 @@ private fun DrawScope.drawThreeDRunnerWorld(
     drawMapBackdrop(project.selectedMap, distance, w, h, primary, map)
 
     val road = Path().apply {
-        moveTo(centerX - w * 0.10f, horizonY)
-        lineTo(centerX + w * 0.10f, horizonY)
-        lineTo(w * 0.95f, trackBottomY)
-        lineTo(w * 0.05f, trackBottomY)
+        moveTo(centerX - w * 0.13f, horizonY)
+        lineTo(centerX + w * 0.13f, horizonY)
+        lineTo(w * 1.06f, trackBottomY)
+        lineTo(-w * 0.06f, trackBottomY)
         close()
     }
-    drawPath(road, Brush.verticalGradient(listOf(map.roadTop, map.roadBottom)))
-    drawPath(road, primary.copy(alpha = 0.22f), style = Stroke(width = 4f))
+    val roadShoulder = Path().apply {
+        moveTo(centerX - w * 0.17f, horizonY + h * 0.015f)
+        lineTo(centerX + w * 0.17f, horizonY + h * 0.015f)
+        lineTo(w * 1.18f, trackBottomY)
+        lineTo(-w * 0.18f, trackBottomY)
+        close()
+    }
+    drawPath(roadShoulder, map.accent.copy(alpha = 0.18f))
+    drawPath(road, Brush.verticalGradient(listOf(map.roadTop.copy(alpha = 0.98f), map.roadBottom)))
+    drawPath(road, primary.copy(alpha = 0.38f), style = Stroke(width = 5f))
 
     drawRoadLines(distance, w, horizonY, trackBottomY, centerX, primary, project.selectedMap)
 
@@ -524,104 +532,179 @@ private fun DrawScope.drawRoadLines(
     primary: Color,
     mapName: String
 ) {
-    val leftEdgeTop = centerX - w * 0.10f
-    val rightEdgeTop = centerX + w * 0.10f
-    val leftEdgeBottom = w * 0.05f
-    val rightEdgeBottom = w * 0.95f
+    val leftEdgeTop = centerX - w * 0.13f
+    val rightEdgeTop = centerX + w * 0.13f
+    val leftEdgeBottom = -w * 0.06f
+    val rightEdgeBottom = w * 1.06f
 
-    repeat(4) { i ->
-        val t = (i + 1) / 4f
-        val top = Offset(lerp(leftEdgeTop, leftEdgeBottom, t), lerp(horizonY, bottomY, t))
-        val bottom = Offset(lerp(rightEdgeTop, rightEdgeBottom, t), lerp(horizonY, bottomY, t))
-        if (i == 1 || i == 2) {
-            val laneT = i / 3f
-            drawLine(
-                Color.White.copy(alpha = 0.20f),
-                Offset(lerp(leftEdgeTop, rightEdgeTop, laneT), horizonY + 12f),
-                Offset(lerp(leftEdgeBottom, rightEdgeBottom, laneT), bottomY),
-                strokeWidth = 4f
-            )
-        }
-        drawLine(Color.White.copy(alpha = 0.06f), top, bottom, strokeWidth = 2f)
+    fun roadPoint(edgeFraction: Float, depth: Float): Offset {
+        val leftX = lerp(leftEdgeTop, leftEdgeBottom, depth)
+        val rightX = lerp(rightEdgeTop, rightEdgeBottom, depth)
+        return Offset(lerp(leftX, rightX, edgeFraction), lerp(horizonY, bottomY, depth))
     }
 
-    repeat(10) { index ->
-        val raw = ((distance * 2.0f + index / 10f) % 1f)
-        val t = raw.pow(1.25f)
-        val y = lerp(horizonY + 8f, bottomY, t)
-        val scale = 0.15f + t * 1.25f
-        val lineWidth = w * 0.030f * scale
-        val color = if (mapName == "Cyber Track") primary.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.34f)
+    // Depth strips make the road feel like it is moving toward the player.
+    repeat(9) { index ->
+        val raw = ((distance * 1.7f + index / 9f) % 1f)
+        val depth = raw.pow(1.38f).coerceIn(0.02f, 1f)
+        val left = roadPoint(0f, depth)
+        val right = roadPoint(1f, depth)
+        drawLine(Color.White.copy(alpha = 0.055f + depth * 0.055f), left, right, strokeWidth = 1.5f + depth * 3.2f)
+    }
+
+    // Lane dividers.
+    listOf(1f / 3f, 2f / 3f).forEach { laneFraction ->
+        val start = roadPoint(laneFraction, 0.02f)
+        val end = roadPoint(laneFraction, 1.0f)
+        drawLine(Color.White.copy(alpha = 0.20f), start, end, strokeWidth = 2.2f)
+    }
+
+    // Moving dash markers in center lane.
+    repeat(12) { index ->
+        val raw = ((distance * 2.35f + index / 12f) % 1f)
+        val depth = raw.pow(1.55f).coerceIn(0.03f, 1f)
+        val point = roadPoint(0.50f, depth)
+        val dashW = w * (0.010f + depth * 0.030f)
+        val dashH = 5f + depth * 11f
+        val color = if (mapName == "Cyber Track") primary.copy(alpha = 0.75f) else Color.White.copy(alpha = 0.42f)
         drawRoundRect(
             color = color,
-            topLeft = Offset(centerX - lineWidth / 2f, y),
-            size = Size(lineWidth, 8f * scale),
-            cornerRadius = CornerRadius(4f, 4f)
+            topLeft = Offset(point.x - dashW / 2f, point.y - dashH / 2f),
+            size = Size(dashW, dashH),
+            cornerRadius = CornerRadius(6f, 6f)
         )
     }
+
+    // Edge glow.
+    drawLine(primary.copy(alpha = 0.34f), roadPoint(0f, 0.03f), roadPoint(0f, 1f), strokeWidth = 3f)
+    drawLine(primary.copy(alpha = 0.34f), roadPoint(1f, 0.03f), roadPoint(1f, 1f), strokeWidth = 3f)
 }
 
 private fun DrawScope.drawMapBackdrop(mapName: String, distance: Float, w: Float, h: Float, primary: Color, palette: ThreeDMapPalette) {
-    val offset = (distance * w * 0.20f) % (w * 0.30f)
+    val slowOffset = (distance * w * 0.16f) % (w * 0.36f)
+    val fastOffset = (distance * w * 0.34f) % (w * 0.42f)
+
+    // Far glow / horizon haze.
+    drawCircle(
+        color = palette.accent.copy(alpha = 0.10f),
+        radius = w * 0.52f,
+        center = Offset(w * 0.50f, h * 0.16f)
+    )
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(Color.Transparent, palette.accent.copy(alpha = 0.08f), Color.Transparent),
+            startY = h * 0.10f,
+            endY = h * 0.56f
+        ),
+        size = Size(w, h)
+    )
+
     when (mapName) {
         "Jungle Temple" -> {
-            repeat(8) { i ->
-                val x = i * w * 0.20f - offset
+            repeat(10) { i ->
+                val x = i * w * 0.18f - slowOffset - w * 0.10f
+                val trunkH = h * (0.25f + (i % 3) * 0.035f)
                 drawRoundRect(
-                    color = Color(0xFF1C5A3E).copy(alpha = 0.55f),
-                    topLeft = Offset(x, h * 0.42f - (i % 2) * 34f),
-                    size = Size(42f, h * 0.35f),
+                    color = Color(0xFF143528).copy(alpha = 0.75f),
+                    topLeft = Offset(x, h * 0.48f - trunkH * 0.15f),
+                    size = Size(24f + (i % 2) * 8f, trunkH),
                     cornerRadius = CornerRadius(10f, 10f)
                 )
-                drawCircle(Color(0xFF36B66D).copy(alpha = 0.45f), radius = 45f + (i % 3) * 10f, center = Offset(x + 20f, h * 0.38f - (i % 2) * 30f))
+                drawCircle(Color(0xFF2FB363).copy(alpha = 0.48f), radius = 42f + (i % 3) * 12f, center = Offset(x + 18f, h * 0.43f - (i % 2) * 28f))
             }
         }
         "Desert Ruins" -> {
-            repeat(7) { i ->
-                val x = i * w * 0.24f - offset
+            repeat(8) { i ->
+                val x = i * w * 0.22f - slowOffset - w * 0.08f
+                val pillarH = h * (0.19f + (i % 3) * 0.035f)
                 drawRoundRect(
-                    color = Color(0xFFB77A3E).copy(alpha = 0.45f),
-                    topLeft = Offset(x, h * 0.44f - (i % 2) * 18f),
-                    size = Size(62f, h * 0.22f + (i % 3) * 18f),
-                    cornerRadius = CornerRadius(6f, 6f)
+                    color = Color(0xFFB7783A).copy(alpha = 0.36f),
+                    topLeft = Offset(x, h * 0.54f - pillarH),
+                    size = Size(52f + (i % 2) * 18f, pillarH),
+                    cornerRadius = CornerRadius(7f, 7f)
+                )
+                drawRoundRect(
+                    color = Color(0xFFE0A15A).copy(alpha = 0.18f),
+                    topLeft = Offset(x - 12f, h * 0.54f - pillarH - 12f),
+                    size = Size(76f + (i % 2) * 18f, 14f),
+                    cornerRadius = CornerRadius(4f, 4f)
+                )
+            }
+            repeat(3) { i ->
+                val y = h * (0.55f + i * 0.05f)
+                drawOval(
+                    color = Color(0xFFB7783A).copy(alpha = 0.13f),
+                    topLeft = Offset(-w * 0.08f + i * w * 0.22f, y),
+                    size = Size(w * 0.90f, h * 0.20f)
                 )
             }
         }
         "Snow Bridge" -> {
-            repeat(6) { i ->
-                val x = i * w * 0.28f - offset
-                val peak = h * (0.32f + (i % 2) * 0.04f)
+            repeat(7) { i ->
+                val x = i * w * 0.24f - slowOffset - w * 0.16f
+                val peak = h * (0.30f + (i % 2) * 0.05f)
                 val path = Path().apply {
                     moveTo(x, h * 0.62f)
-                    lineTo(x + 80f, peak)
-                    lineTo(x + 160f, h * 0.62f)
+                    lineTo(x + 92f, peak)
+                    lineTo(x + 184f, h * 0.62f)
                     close()
                 }
-                drawPath(path, Color(0xFFD7ECFF).copy(alpha = 0.35f))
+                drawPath(path, Color(0xFFD7ECFF).copy(alpha = 0.34f))
+                drawLine(Color.White.copy(alpha = 0.28f), Offset(x + 92f, peak), Offset(x + 124f, h * 0.62f), strokeWidth = 3f)
+            }
+            repeat(18) { i ->
+                val x = (i * 53f + fastOffset) % (w + 80f) - 40f
+                val y = h * (0.16f + (i % 8) * 0.045f)
+                drawCircle(Color.White.copy(alpha = 0.26f), radius = 2f + (i % 3), center = Offset(x, y))
             }
         }
         "Cyber Track" -> {
-            repeat(6) { i ->
-                val x = i * w * 0.24f - offset
-                drawLine(primary.copy(alpha = 0.35f), Offset(x, h * 0.18f), Offset(x + 80f, h * 0.62f), strokeWidth = 3f)
-                drawLine(primary.copy(alpha = 0.22f), Offset(x + 80f, h * 0.18f), Offset(x, h * 0.62f), strokeWidth = 3f)
+            repeat(9) { i ->
+                val x = i * w * 0.18f - fastOffset
+                drawLine(primary.copy(alpha = 0.38f), Offset(x, h * 0.10f), Offset(x + 110f, h * 0.72f), strokeWidth = 3.5f)
+                drawLine(Color(0xFFFF4DFF).copy(alpha = 0.20f), Offset(x + 100f, h * 0.12f), Offset(x - 10f, h * 0.72f), strokeWidth = 2.5f)
+            }
+            repeat(5) { i ->
+                val y = h * (0.22f + i * 0.10f)
+                drawLine(primary.copy(alpha = 0.14f), Offset(0f, y), Offset(w, y), strokeWidth = 2f)
             }
         }
         "Rail Track" -> {
-            drawLine(palette.accent.copy(alpha = 0.35f), Offset(w * 0.18f, h * 0.52f), Offset(w * 0.03f, h * 0.88f), strokeWidth = 8f)
-            drawLine(palette.accent.copy(alpha = 0.35f), Offset(w * 0.82f, h * 0.52f), Offset(w * 0.97f, h * 0.88f), strokeWidth = 8f)
-        }
-        else -> {
+            drawLine(palette.accent.copy(alpha = 0.42f), Offset(w * 0.18f, h * 0.46f), Offset(w * 0.00f, h * 0.94f), strokeWidth = 8f)
+            drawLine(palette.accent.copy(alpha = 0.42f), Offset(w * 0.82f, h * 0.46f), Offset(w * 1.00f, h * 0.94f), strokeWidth = 8f)
             repeat(8) { i ->
-                val x = i * w * 0.20f - offset
-                drawRoundRect(
-                    color = primary.copy(alpha = 0.11f),
-                    topLeft = Offset(x, h * 0.38f - (i % 3) * 32f),
-                    size = Size(56f + (i % 2) * 25f, h * 0.28f + (i % 3) * 20f),
-                    cornerRadius = CornerRadius(10f, 10f)
-                )
+                val x = i * w * 0.20f - fastOffset
+                drawRoundRect(Color(0xFF27334A).copy(alpha = 0.55f), Offset(x, h * 0.38f), Size(42f, h * 0.32f), CornerRadius(8f, 8f))
             }
         }
+        else -> {
+            repeat(10) { i ->
+                val x = i * w * 0.18f - slowOffset - w * 0.10f
+                val buildingH = h * (0.18f + (i % 4) * 0.04f)
+                drawRoundRect(
+                    color = Color(0xFF1D2544).copy(alpha = 0.62f),
+                    topLeft = Offset(x, h * 0.55f - buildingH),
+                    size = Size(52f + (i % 2) * 28f, buildingH),
+                    cornerRadius = CornerRadius(10f, 10f)
+                )
+                repeat(3) { j ->
+                    drawRoundRect(
+                        color = primary.copy(alpha = 0.18f),
+                        topLeft = Offset(x + 12f + j * 16f, h * 0.57f - buildingH + 20f),
+                        size = Size(7f, 12f),
+                        cornerRadius = CornerRadius(2f, 2f)
+                    )
+                }
+            }
+        }
+    }
+
+    // Foreground speed panels on the sides.
+    repeat(6) { i ->
+        val y = h * (0.34f + i * 0.12f) + (fastOffset % 54f)
+        val alpha = (0.10f + i * 0.012f).coerceAtMost(0.22f)
+        drawRoundRect(primary.copy(alpha = alpha), Offset(-18f, y), Size(44f, 48f), CornerRadius(8f, 8f))
+        drawRoundRect(primary.copy(alpha = alpha), Offset(w - 26f, y + 20f), Size(44f, 48f), CornerRadius(8f, 8f))
     }
 }
 
@@ -629,56 +712,58 @@ private fun DrawScope.draw3DObstacle(obstacle: ThreeDObstacle, w: Float, horizon
     val depth = depthFromZ(obstacle.z)
     if (depth <= 0f) return
     val x = laneX(obstacle.lane.toFloat(), depth, w, centerX)
-    val y = lerp(horizonY, bottomY, depth.pow(1.40f))
-    val scale = 0.20f + depth * 1.42f
-    val shadowW = 34f * scale
-    drawOvalShadow(x, y, shadowW, scale)
+    val y = lerp(horizonY, bottomY, depth.pow(1.34f))
+    val scale = 0.18f + depth * 1.52f
+    drawOvalShadow(x, y + 4f * scale, 42f * scale, scale)
 
     when (obstacle.type) {
         ThreeDObstacleType.LOW_BLOCK -> {
-            drawRoundRect(
-                color = Color(0xFFFF5252),
-                topLeft = Offset(x - 22f * scale, y - 28f * scale),
-                size = Size(44f * scale, 36f * scale),
-                cornerRadius = CornerRadius(8f * scale, 8f * scale)
-            )
-            drawRoundRect(
-                color = Color.White.copy(alpha = 0.22f),
-                topLeft = Offset(x - 15f * scale, y - 24f * scale),
-                size = Size(14f * scale, 9f * scale),
-                cornerRadius = CornerRadius(4f * scale, 4f * scale)
+            drawPseudoBox(
+                centerX = x,
+                baseY = y,
+                width = 48f * scale,
+                height = 42f * scale,
+                depth = 18f * scale,
+                front = Color(0xFFFF4D5E),
+                top = Color(0xFFFF8A92),
+                side = Color(0xFFBA2536)
             )
         }
         ThreeDObstacleType.ROAD_BLOCK -> {
-            drawRoundRect(
-                color = Color(0xFFFF8A3D),
-                topLeft = Offset(x - 30f * scale, y - 34f * scale),
-                size = Size(60f * scale, 42f * scale),
-                cornerRadius = CornerRadius(10f * scale, 10f * scale)
+            drawPseudoBox(
+                centerX = x,
+                baseY = y,
+                width = 70f * scale,
+                height = 48f * scale,
+                depth = 22f * scale,
+                front = Color(0xFFFF8A3D),
+                top = Color(0xFFFFBD76),
+                side = Color(0xFFB85624)
             )
-            drawLine(Color.White.copy(alpha = 0.55f), Offset(x - 22f * scale, y - 20f * scale), Offset(x + 22f * scale, y - 4f * scale), strokeWidth = 4f * scale)
+            drawLine(Color.White.copy(alpha = 0.55f), Offset(x - 26f * scale, y - 30f * scale), Offset(x + 26f * scale, y - 12f * scale), strokeWidth = 4f * scale)
         }
         ThreeDObstacleType.HIGH_GATE -> {
             val gateColor = if (project.selectedMap == "Cyber Track") Color(0xFF00E5FF) else Color(0xFFFFD54F)
+            drawCircle(gateColor.copy(alpha = 0.14f), radius = 64f * scale, center = Offset(x, y - 60f * scale))
             drawRoundRect(
                 color = gateColor,
-                topLeft = Offset(x - 42f * scale, y - 110f * scale),
-                size = Size(84f * scale, 24f * scale),
-                cornerRadius = CornerRadius(7f * scale, 7f * scale)
+                topLeft = Offset(x - 50f * scale, y - 122f * scale),
+                size = Size(100f * scale, 22f * scale),
+                cornerRadius = CornerRadius(8f * scale, 8f * scale)
             )
-            drawLine(gateColor, Offset(x - 42f * scale, y - 108f * scale), Offset(x - 42f * scale, y), strokeWidth = 7f * scale)
-            drawLine(gateColor, Offset(x + 42f * scale, y - 108f * scale), Offset(x + 42f * scale, y), strokeWidth = 7f * scale)
+            drawRoundRect(gateColor.copy(alpha = 0.86f), Offset(x - 50f * scale, y - 120f * scale), Size(9f * scale, 124f * scale), CornerRadius(4f, 4f))
+            drawRoundRect(gateColor.copy(alpha = 0.86f), Offset(x + 41f * scale, y - 120f * scale), Size(9f * scale, 124f * scale), CornerRadius(4f, 4f))
         }
         ThreeDObstacleType.RAMP -> {
             val path = Path().apply {
-                moveTo(x - 44f * scale, y)
-                lineTo(x + 44f * scale, y)
-                lineTo(x + 28f * scale, y - 48f * scale)
-                lineTo(x - 28f * scale, y - 28f * scale)
+                moveTo(x - 52f * scale, y)
+                lineTo(x + 52f * scale, y)
+                lineTo(x + 30f * scale, y - 54f * scale)
+                lineTo(x - 32f * scale, y - 30f * scale)
                 close()
             }
-            drawPath(path, Color(0xFF8E6BFF))
-            drawPath(path, Color.White.copy(alpha = 0.18f), style = Stroke(width = 3f * scale))
+            drawPath(path, Brush.verticalGradient(listOf(Color(0xFFB39CFF), Color(0xFF6D4CFF))))
+            drawPath(path, Color.White.copy(alpha = 0.23f), style = Stroke(width = 3f * scale))
         }
     }
 }
@@ -728,33 +813,93 @@ private fun DrawScope.draw3DPlayer(
 ) {
     val depth = 0.94f
     val x = laneX(lane, depth, w, centerX)
-    val groundY = lerp(horizonY, trackBottomY, depth.pow(1.40f))
-    val liftPx = jumpLift * h * 0.28f
-    val scale = 1.22f
+    val groundY = lerp(horizonY, trackBottomY, depth.pow(1.34f))
+    val liftPx = jumpLift * h * 0.30f
+    val scale = 1.12f
     val playerColor = threeDCharacterColor(project.selectedCharacter, primary)
-    val bodyH = (76f - 26f * slideProgress) * scale
-    val bodyW = (50f + 16f * slideProgress) * scale
     val yBottom = groundY - liftPx
-    drawOvalShadow(x, groundY, 44f * scale, scale)
+    val crouch = slideProgress
+    val torsoH = (58f - 22f * crouch) * scale
+    val torsoW = (38f + 20f * crouch) * scale
+
+    drawOvalShadow(x, groundY + 8f, 58f * scale, scale)
 
     if (shieldActive) {
-        drawCircle(Color(0xFF64FFDA).copy(alpha = 0.22f), radius = 58f, center = Offset(x, yBottom - bodyH * 0.45f))
-        drawCircle(Color(0xFF64FFDA).copy(alpha = 0.72f), radius = 58f, center = Offset(x, yBottom - bodyH * 0.45f), style = Stroke(width = 5f))
+        drawCircle(Color(0xFF64FFDA).copy(alpha = 0.18f), radius = 70f, center = Offset(x, yBottom - torsoH * 0.60f))
+        drawCircle(Color(0xFF64FFDA).copy(alpha = 0.68f), radius = 70f, center = Offset(x, yBottom - torsoH * 0.60f), style = Stroke(width = 5f))
     }
 
+    // Legs / motion streaks.
+    val legColor = playerColor.copy(alpha = 0.82f)
+    if (crouch < 0.5f) {
+        drawLine(legColor, Offset(x - 10f * scale, yBottom - 4f), Offset(x - 22f * scale, yBottom + 22f * scale), strokeWidth = 8f * scale)
+        drawLine(legColor.copy(alpha = 0.72f), Offset(x + 9f * scale, yBottom - 4f), Offset(x + 20f * scale, yBottom + 18f * scale), strokeWidth = 8f * scale)
+    }
+
+    // Body.
     drawRoundRect(
-        color = playerColor,
-        topLeft = Offset(x - bodyW / 2f, yBottom - bodyH),
-        size = Size(bodyW, bodyH),
-        cornerRadius = CornerRadius(17f, 17f)
+        brush = Brush.verticalGradient(listOf(playerColor.copy(alpha = 1f), playerColor.copy(alpha = 0.68f))),
+        topLeft = Offset(x - torsoW / 2f, yBottom - torsoH - 14f * scale),
+        size = Size(torsoW, torsoH),
+        cornerRadius = CornerRadius(18f * scale, 18f * scale)
     )
-    drawCircle(Color.White.copy(alpha = 0.88f), radius = 11f, center = Offset(x + bodyW * 0.16f, yBottom - bodyH + 24f))
     drawRoundRect(
-        color = Color.Black.copy(alpha = 0.16f),
-        topLeft = Offset(x - bodyW / 2f, yBottom - 8f),
-        size = Size(bodyW, 8f),
-        cornerRadius = CornerRadius(5f, 5f)
+        color = Color.White.copy(alpha = 0.16f),
+        topLeft = Offset(x - torsoW / 2f + 6f, yBottom - torsoH - 8f * scale),
+        size = Size(torsoW * 0.42f, torsoH * 0.45f),
+        cornerRadius = CornerRadius(10f, 10f)
     )
+
+    // Head / visor.
+    if (crouch < 0.65f) {
+        drawCircle(playerColor.copy(alpha = 0.95f), radius = 19f * scale, center = Offset(x, yBottom - torsoH - 32f * scale))
+        drawCircle(Color.White.copy(alpha = 0.90f), radius = 6f * scale, center = Offset(x + 7f * scale, yBottom - torsoH - 37f * scale))
+    }
+
+    // Speed glow under player.
+    drawRoundRect(
+        color = primary.copy(alpha = 0.28f),
+        topLeft = Offset(x - 30f * scale, yBottom + 18f * scale),
+        size = Size(60f * scale, 6f * scale),
+        cornerRadius = CornerRadius(8f, 8f)
+    )
+}
+
+private fun DrawScope.drawPseudoBox(
+    centerX: Float,
+    baseY: Float,
+    width: Float,
+    height: Float,
+    depth: Float,
+    front: Color,
+    top: Color,
+    side: Color
+) {
+    val left = centerX - width / 2f
+    val topY = baseY - height
+    val frontRectTop = Offset(left, topY)
+    val frontSize = Size(width, height)
+
+    val topFace = Path().apply {
+        moveTo(left, topY)
+        lineTo(left + depth, topY - depth)
+        lineTo(left + width + depth, topY - depth)
+        lineTo(left + width, topY)
+        close()
+    }
+    val sideFace = Path().apply {
+        moveTo(left + width, topY)
+        lineTo(left + width + depth, topY - depth)
+        lineTo(left + width + depth, baseY - depth)
+        lineTo(left + width, baseY)
+        close()
+    }
+
+    drawPath(topFace, top)
+    drawPath(sideFace, side)
+    drawRoundRect(front, frontRectTop, frontSize, CornerRadius(9f, 9f))
+    drawPath(topFace, Color.White.copy(alpha = 0.16f), style = Stroke(width = 2f))
+    drawRoundRect(Color.Black.copy(alpha = 0.10f), Offset(left, baseY - height * 0.20f), Size(width, height * 0.20f), CornerRadius(8f, 8f))
 }
 
 private fun DrawScope.drawOvalShadow(x: Float, y: Float, width: Float, scale: Float) {
@@ -825,13 +970,15 @@ private fun threeDCharacterColor(character: String, fallback: Color): Color = wh
 }
 
 private fun depthFromZ(z: Float): Float {
-    val depth = 1f - (z / 1.92f)
+    val depth = 1f - (z / 2.05f)
     return depth.coerceIn(0.02f, 1.08f)
 }
 
 private fun laneX(lane: Float, depth: Float, w: Float, centerX: Float): Float {
-    val laneOffset = (lane - 1f) / 1f
-    val spread = w * 0.34f * depth.pow(1.15f)
+    val laneOffset = lane - 1f
+    val nearSpread = w * 0.38f
+    val farSpread = w * 0.055f
+    val spread = lerp(farSpread, nearSpread, depth.pow(1.10f))
     return centerX + laneOffset * spread
 }
 

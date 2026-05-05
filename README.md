@@ -75,3 +75,8 @@ Added a real playable 2D Platformer template with left/right movement, jump phys
 - Editor speed, difficulty, coins and powerups are connected to the 3D runner.
 - Powerups include Shield, Magnet and 2x Coins.
 - Version updated to 0.5.0.
+
+
+## Phase 5.1
+- Rebuilt 3D runner visuals with a premium 2.5D perspective road, richer map backdrops, pseudo-3D obstacles, improved player silhouette, side speed panels, road glow, and cleaner depth scaling.
+- Version: 0.5.1
