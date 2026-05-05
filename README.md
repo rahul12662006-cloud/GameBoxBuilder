@@ -2,7 +2,7 @@
 
 No-code Android game builder foundation.
 
-## Phase 3 build
+## Phase 4 build
 
 This version includes:
 
@@ -30,3 +30,8 @@ Push this project to GitHub and run the workflow:
 `.github/workflows/android-debug-apk.yml`
 
 The APK is uploaded as a workflow artifact.
+
+
+## Phase 4
+
+Added a real playable 2D Platformer template with left/right movement, jump physics, platforms, pits, spikes, enemies, checkpoint, coins, lives, finish flag, level complete screen and best score saving. The Preview button now opens the real platformer playtest for the 2D Platformer template.

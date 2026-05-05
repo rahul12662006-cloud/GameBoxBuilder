@@ -20,13 +20,13 @@ object DefaultLibrary {
             name = "2D Platformer",
             dimension = GameDimension.TWO_D,
             description = "Create a Mario-style platform game with tiles, enemies, coins, checkpoints and levels.",
-            tag = "Coming after runner",
+            tag = "Playable in Phase 4",
             characters = listOf("Pixel Hero", "Explorer", "Knight", "Robot", "Alien"),
             maps = listOf("Grass Land", "Cave", "Snow Hills", "Lava Zone", "Space Base"),
             obstaclePacks = listOf("Pits + Spikes", "Moving Platforms", "Enemy Walkers", "Coins + Keys", "Mixed Starter Pack"),
             controlModes = listOf("Left/Right + Jump", "Joystick + Jump"),
             cameraModes = listOf("Follow Camera", "Fixed Level Camera"),
-            isPlayableInPhaseOne = false
+            isPlayableInPhaseOne = true
         ),
         GameTemplate(
             id = "3d_endless_runner",

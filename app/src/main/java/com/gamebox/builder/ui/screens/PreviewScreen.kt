@@ -53,6 +53,11 @@ fun PreviewScreen(
         return
     }
 
+    if (project.templateId == "2d_platformer") {
+        PlatformerGameScreen(project = project, onBack = onBack)
+        return
+    }
+
     var lane by remember { mutableIntStateOf(1) }
     var actionTick by remember { mutableIntStateOf(0) }
 
